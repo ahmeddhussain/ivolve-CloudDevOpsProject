@@ -20,7 +20,7 @@ services:
       - ivolve-net
 
   auth-service:
-    build: ./auth-service
+    build: ./iVolveFinalProject/auth-service
     container_name: auth-service
     restart: unless-stopped
     environment:
@@ -38,7 +38,7 @@ services:
       - ivolve-net
 
   roadmap-service:
-    build: ./roadmap-service
+    build: ./iVolveFinalProject/roadmap-service
     container_name: roadmap-service
     restart: unless-stopped
     ports:
@@ -47,7 +47,7 @@ services:
       - ivolve-net
 
   frontend:
-    build: ./frontend
+    build: ./iVolveFinalProject/frontend
     container_name: frontend
     restart: unless-stopped
     environment:
