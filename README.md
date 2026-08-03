@@ -245,6 +245,9 @@ The assignment requires the following Terraform modules: Network, Server, EKS, a
 * Worker nodes in private subnets
 * Multiple Availability Zones
 * IAM rules for the cluser and nodes
+* Install `aws_load_balancer_controller`
+* Enable   `aws-ebs-csi-driver` addon
+
 
 #### 4. ECR module
 
