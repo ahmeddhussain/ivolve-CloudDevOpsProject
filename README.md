@@ -542,91 +542,89 @@ http://<AWS_LOADBALANCER_URL>
  - The Frontend sends an HTTP POST request to auth-service (Port 5000), which processes the request and writes the user record into MySQL.
  - Log in with the newly created credentials to confirm JWT token generation.
 
+#### Step 3: Test Roadmap Microservice (roadmap-service)
+- Once logged in, navigate to the Roadmaps section.
+- The Frontend passes the JWT token to roadmap-service (Port 8080).
+- The roadmap-service validates the JWT token, retrieves learning roadmap data, and renders it on screen.
+
+![alt text](screenshots/image-15.png)
+
+#### Step 4: Verify Database Persistence (Proof of End-to-End Flow)
+To prove that user registration traversed the full chain (Frontend ➔ Auth-Service ➔ MySQL) and persisted to disk, execute an interactive SQL check inside the mysql-0 pod in EKS:
+
+```bash
+kubectl exec -it mysql-0 -n ivolve -- mysql -u ahmed -pahmedpass ivolve
+SHOW TABLES;
+SELECT id, username, created_at FROM users;
+```
+![alt text](screenshots/image16.png)
 
 
+## Real-World Troubleshooting & Solutions
 
-
-
-
-
-
-
-## Troubleshooting
-
-### Terraform
-
-* Make sure AWS credentials are configured.
-* Make sure the S3 backend bucket exists before running `terraform init`.
-* Check permissions for EC2, EKS, ECR, IAM, VPC, and S3 operations.
-
-### Ansible
-
-* Confirm the Jenkins EC2 instance is reachable by SSH.
-* Ensure the dynamic inventory plugin is installed and configured.
-* Verify that the correct private key and security group are used.
-
-### Kubernetes
-
-* If pods are pending, check node capacity and scheduling constraints.
-* If services are not reachable, confirm labels and selectors match.
-* If Ingress is not working, confirm the ingress controller is installed.
-
-### Jenkins
-
-* Make sure Docker is available to the Jenkins host/container.
-* Check that AWS credentials are configured in Jenkins.
-* Verify that ECR repositories already exist.
-* Verify that the Jenkins shared library path is correct.
-
-### ArgoCD
-
-* Confirm the Git repository URL and branch are correct.
-* Check namespace permissions.
-* Verify that ArgoCD has access to the Kubernetes manifests.
+This section documents real-world technical issues encountered during infrastructure setup, configuration, and pipeline execution, along with their root-cause solutions.
 
 ---
 
-## Screenshots / Test Results
+### 1 Infrastructure & Terraform
 
-Add screenshots here as you complete each stage of the project.
+* **`InvalidKeyPair.NotFound` Error:** 
+  * *Issue:* Passing a local file path (`key_name = "./ivolve.pem"`) in `terraform.tfvars` failed.
+  * *Fix:* Pass only the literal key name registered in AWS Console (`key_name = "ivolve"`).
 
-### Docker Compose
+* **EC2 Disk Space Exhaustion:**
+  * *Issue:* Default 8GB root volume filled up due to concurrent Docker images, Java runtimes, and SonarQube.
+  * *Fix:* Expanded AWS EBS volume size to 20GB/30GB in `modules/server/main.tf` and executed `sudo growpart /dev/nvme0n1 1` and `sudo resize2fs` on Ubuntu to extend the ext4 filesystem online.
 
-* Frontend running locally
-* User registration / login
-* MySQL container showing inserted data
-
-### Terraform
-
-* AWS console showing VPC
-* AWS console showing EC2 instance
-* AWS console showing EKS cluster
-* AWS console showing ECR repositories
-
-### Ansible
-
-* Successful playbook output
-* Jenkins service running on EC2
-
-### Kubernetes
-
-* `kubectl get pods`
-* `kubectl get svc`
-* `kubectl get ingress`
-* Application opened in browser
-
-### Jenkins
-
-* Successful pipeline run
-* Build / scan / push stages
-* Manifest update stage
-
-### ArgoCD
-
-* Application status: Synced
-* Application status: Healthy
 
 ---
+
+### 2 Ansible & Server Configuration
+
+
+* **SonarQube Admin Password Policy (HTTP 400):**
+  * *Issue:* REST API password change task failed because SonarQube enforces a strict 12-character minimum password policy.
+  * *Fix:* Updated `vault_sonarqube_admin_password` in `vault.yml` to a 12+ character string (`StrongPassword123!`).
+
+* **Jenkins Startup Failure (`Java 17 older than required Java 21`):**
+  * *Issue:* Jenkins service failed on boot because recent Jenkins releases require Java 21+.
+  * *Fix:* Updated `vars.yml` and `roles/common/tasks/main.yml` to install `openjdk-21-jdk`.
+
+
+
+---
+
+### 3 Jenkins CI & Shared Libraries
+
+
+* **Docker Build Context (`path not found`):**
+  * *Issue:* `docker build` failed because microservices are located in subdirectories (`docker/iVolveFinalProject/frontend`) that are cloned by another repoisitry.
+  * *Fix:* Updated `Jenkinsfile`s to pass relative directory paths to `buildimage(name, tag, "docker/iVolveFinalProject/frontend")` and merged the source code repoisitry.
+
+* **SonarScanner Memory Freeze:**
+  * *Issue:* SonarQube JS sensor froze while attempting to analyze binary `.png` images and `node_modules`.
+  * *Fix:* Updated `vars/sonarscan.groovy` to run `sonarsource/sonar-scanner-cli` inside Docker with memory caps (`-Dsonar.javascript.node.maxspace=512`) and exclusions (`-Dsonar.exclusions=**/node_modules/**,**/*.png,**/*.jpg`).
+
+
+---
+
+### 4. Kubernetes & ArgoCD GitOps
+
+* **PVC Stuck in `Pending` (EBS CSI Driver Auth Failure):**
+  * *Issue:* The `mysql-persistent-storage-mysql-0` PVC stayed `Pending` indefinitely. The EBS CSI controller pods were in `CrashLoopBackOff`, logging `no EC2 IMDS role found` — the driver had no way to authenticate to AWS since it relied on EC2 instance metadata (IMDS), which isn't a reliable credential source for pod-level AWS API access on EKS.
+  * *Fix:* Created a dedicated IAM role for the EBS CSI driver's ServiceAccount via IRSA (IAM Roles for Service Accounts), with the `AmazonEBSCSIDriverPolicy` attached, and bound it via `service_account_role_arn` on the `aws_eks_addon.ebs_csi` Terraform resource. Once the ServiceAccount had a real IAM identity, the controller pods came up healthy and the PVC bound automatically.
+
+* **Ingress ALB Address Pending (Load Balancer Controller Not Installed):**
+  * *Issue:* The Ingress showed no `ADDRESS` because the AWS Load Balancer Controller — required to provision an ALB from an `ingressClassName: alb` Ingress — wasn't installed in the cluster at all.
+  * *Fix:* Installed the AWS Load Balancer Controller via Helm, with its own dedicated IRSA role (`AWSLoadBalancerControllerIAMPolicy` attached) so it could call the EC2/ELB APIs needed to provision the ALB.
+
+* **AWS Load Balancer Controller CrashLoopBackOff (IMDS Timeout):**
+  * *Issue:* Even after installing the controller, pods failed with `failed to get VPC ID from instance metadata` and later `failed to introspect region from EC2Metadata` — both from the same underlying cause as the EBS CSI driver: reliance on IMDS auto-discovery, which timed out.
+  * *Fix:* Passed `vpcId` and `region` explicitly to the Helm release instead of relying on IMDS auto-discovery, and bound the controller's ServiceAccount to its IRSA role via `serviceAccount.annotations."eks.amazonaws.com/role-arn"`.
+
+
+---
+
 
 ## License
 
@@ -634,7 +632,4 @@ This project is for educational and training purposes.
 
 ---
 
-## Acknowledgements
 
-* Source application: [`iVolveFinalProject`](https://github.com/Ibrahim-Adel15/iVolveFinalProject)
-* Project requirements based on the provided graduation project instructions.
