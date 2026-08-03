@@ -7,19 +7,19 @@ End-to-end DevOps pipeline for a microservices-based web application: containeri
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Repository Layout](#repository-layout)
-4. [Prerequisites](#prerequisites)
-5. [Local Development with Docker Compose](#local-development-with-docker-compose)
-6. [Infrastructure Provisioning with Terraform](#infrastructure-provisioning-with-terraform)
-7. [Configuration Management with Ansible](#configuration-management-with-ansible)
-8. [Container Orchestration with Kubernetes](#container-orchestration-with-kubernetes)
-9. [Continuous Integration with Jenkins](#continuous-integration-with-jenkins)
-10. [Continuous Deployment with ArgoCD](#continuous-deployment-with-argocd)
-11. [System Verification & End-to-End Testing](#system-verification--end-to-end-testing)
-12. [Real-World Troubleshooting & Solutions](#real-world-troubleshooting--solutions)
-13. [Screenshots Index](#screenshots-index)
-14. [License](#license)
+2. [Quick Start](#quick-start)
+3. [Architecture](#architecture)
+4. [Repository Layout](#repository-layout)
+5. [Prerequisites](#prerequisites)
+6. [Local Development with Docker Compose](#local-development-with-docker-compose)
+7. [Infrastructure Provisioning with Terraform](#infrastructure-provisioning-with-terraform)
+8. [Configuration Management with Ansible](#configuration-management-with-ansible)
+9. [Container Orchestration with Kubernetes](#container-orchestration-with-kubernetes)
+10. [Continuous Integration with Jenkins](#continuous-integration-with-jenkins)
+11. [Continuous Deployment with ArgoCD](#continuous-deployment-with-argocd)
+12. [System Verification & End-to-End Testing](#system-verification--end-to-end-testing)
+13. [Real-World Troubleshooting & Solutions](#real-world-troubleshooting--solutions)
+14. [Screenshots Index](#screenshots-index)
 
 ---
 
@@ -46,6 +46,58 @@ This repo delivers, for each stage of the pipeline:
 * Kubernetes manifests deploying the app into EKS
 * A Jenkins CI pipeline per microservice (build → code scan → security scan → push → update manifests → GitOps push)
 * ArgoCD continuous deployment following GitOps
+
+## Quick Start
+ 
+The fastest path from a clean checkout to a running app in EKS. Each step links to its full section below for explanations, screenshots, and troubleshooting.
+ 
+```bash
+git clone https://github.com/ahmeddhussain/ivolve-CloudDevOpsProject.git
+cd ivolve-CloudDevOpsProject
+```
+ 
+**1. (Optional) Test the app locally first** — [details](#local-development-with-docker-compose)
+```bash
+cd docker && docker compose up --build
+# http://localhost:3000
+```
+ 
+**2. Provision AWS infrastructure** — [details](#infrastructure-provisioning-with-terraform)
+```bash
+cd terraform
+terraform init
+terraform apply --auto-approve      
+```
+ 
+**3. Configure Jenkins + SonarQube** — [details](#configuration-management-with-ansible)
+```bash
+cd ../ansible
+# create + encrypt group_vars/all/vault.yml first — see the Ansible section
+ansible-inventory --graph
+ansible-playbook site.yml --ask-vault-pass
+```
+ 
+**4. Set up Jenkins** — [details](#continuous-integration-with-jenkins)
+- Log into `http://<EC2_PUBLIC_IP>:8080`.
+- Add Global Pipeline Library `jenkins-shared-library` pointing at this repo.
+- Add credentials: `github-credentials`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `sonarqube-token`.
+- Create 3 pipeline jobs from `Jenkinsfile.frontend`, `Jenkinsfile.auth`, `Jenkinsfile.roadmap`, and build each once — this pushes images to ECR and writes the tags into `k8s/`.
+**5. Deploy ArgoCD** — [details](#continuous-deployment-with-argocd)
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -f ../argocd/application.yml
+kubectl apply -f ../argocd/svc-lb.yml
+```
+ 
+**6. Verify** — [details](#system-verification--end-to-end-testing)
+```bash
+kubectl get pods -n ivolve
+kubectl get ingress -n ivolve   # grab the ALB address
+```
+Open `http://<ALB_DNS_NAME>/signup` in a browser.
+ 
+---
 
 ## Architecture
 
@@ -203,10 +255,8 @@ terraform plan
 terraform apply --auto-approve
 ```
 
-> **Two-phase apply note:** the `eks` module's `helm_release.aws_load_balancer_controller` resource uses the `helm` provider, which isn't given an explicit `kubernetes {}` block in `provider.tf` — it falls back to your local kubeconfig. On a first-time apply the cluster doesn't exist yet, so:
-> 1. Run `terraform apply` once (it will create the cluster and node group; the Helm release step will fail if your kubeconfig isn't pointed at the new cluster yet).
-> 2. Run `aws eks update-kubeconfig --region <region> --name <cluster_name>`.
-> 3. Run `terraform apply` again — the Helm release will now succeed against the live cluster.
+> **Automatic Dependency Waiting:** Terraform calculates the resource dependency graph so that the Helm provider automatically **waits for the EKS cluster to be fully provisioned and ready** before attempting to fetch the authentication token or install Helm releases. This eliminates local `kubeconfig` dependencies and manual two-phase applies, executing the entire infrastructure in a single, 100% automated `terraform apply` run.
+
 
 ### Test Results
 
@@ -262,7 +312,7 @@ Ansible configures the Jenkins/SonarQube EC2 instance after Terraform provisions
 ### Test Results
 
 * Java 21, Docker, and Trivy installed and verified.
-* SonarQube reachable at `http://<EC2_PUBLIC_IP>:9000` with forced authentication disabled and a pipeline token generated.
+* SonarQube reachable at `http://<EC2_PUBLIC_IP>:9000` with a pipeline token generated.
 
   ![SonarQube web UI live, no login required](screenshots/image-6.png)
 
@@ -509,6 +559,3 @@ Quick reference for every file in [`screenshots/`](./screenshots/) and where it'
 
 ---
 
-## License
-
-This project is for educational and training purposes.
