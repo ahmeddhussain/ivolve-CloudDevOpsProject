@@ -533,8 +533,8 @@ Open the public Ingress Load Balancer URL in your browser:
 ```text
 http://<AWS_LOADBALANCER_URL>
 ```
-![alt text](screenshots/image14.png)
-![alt text](screenshots/image13.png)
+![alt text](screenshots/image-14.png)
+![alt text](screenshots/image-13.png)
 
 ##### Step 2: Test Authentication Microservice (auth-service)
  - Navigate to the Sign Up / Register page on the Frontend UI.
@@ -557,7 +557,7 @@ kubectl exec -it mysql-0 -n ivolve -- mysql -u ahmed -pahmedpass ivolve
 SHOW TABLES;
 SELECT id, username, created_at FROM users;
 ```
-![alt text](screenshots/image16.png)
+![alt text](screenshots/image-16.png)
 
 
 ## Real-World Troubleshooting & Solutions
