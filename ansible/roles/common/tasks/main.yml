@@ -14,5 +14,6 @@
       - apt-transport-https
       - ca-certificates
       - openjdk-21-jdk
+      - awscli 
     state: present
 
