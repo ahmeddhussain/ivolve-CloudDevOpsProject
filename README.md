@@ -279,7 +279,7 @@ terraform apply --auto-approve
 ](screenshots/image-4.png)
 ---
 
-## 4. Configuration Management with Ansible
+## Configuration Management with Ansible
 
 Ansible is used to automatically configure the Jenkins EC2 instance after Terraform completes provisioning. The setup is built using modular Ansible Roles, Dynamic Inventory, and Ansible Vault for encrypted credentials.
 
@@ -354,49 +354,12 @@ The CLuster Has:
 * ConfigMap and Secret for environment variables
 * Ingress for the frontend
 
-### Kubernetes resources
-
-#### Namespace
-
-Creates a dedicated namespace for the application.
-
-#### Deployments
-
-Used for:
-
-* `frontend`
-* `auth-service`
-* `roadmap-service`
-
-#### Services
-
-Used for stable internal access between microservices.
-
-#### StatefulSet
-
-Used for MySQL so the database keeps stable network identity and persistent storage.
-
-#### Headless Service
-
-Used to expose the StatefulSet pods internally.
-
-#### StorageClass / PVC
-
-Used for persistent MySQL data.
-
-#### ConfigMap and Secret
-
-Used to inject configuration and sensitive environment variables.
-
-#### Ingress
-
-Used to expose the frontend externally.
 
 ### Example kubectl commands
 
 ```bash
-kubectl apply -f kubernetes/namespace.yaml
-kubectl apply -f kubernetes/
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/
 kubectl get pods -n ivolve
 kubectl get svc -n ivolve
 kubectl get ingress -n ivolve
@@ -412,114 +375,119 @@ kubectl get ingress -n ivolve
 
 ---
 
-## Continuous Integration with Jenkins
+##  Continuous Integration with Jenkins
 
-Jenkins is used to automate the build and delivery process.
+Jenkins automates the Continuous Integration (CI) process for each microservice (`frontend`, `auth-service`, and `roadmap-service`). The pipelines strictly follow DevSecOps principles, incorporating code quality scans, container vulnerability analysis, ECR registry management, and GitOps manifest updates.
 
-The assignment requires Jenkins pipelines for each microservice with these stages:
-
-* Build Image
-* Scan Image
-* Push Image
-* Delete Image Locally
-* Update Manifests
-* Push Manifests
-* Use Shared Library
-
-### Pipeline flow
+### Pipeline Stage Flow
 
 ```text
-Checkout
+Checkout SCM
   ↓
-Build Image
+Build Docker Image
   ↓
-Scan Image
+SonarQube Code Quality Scan
   ↓
-Push Image
+Trivy Security Scan
   ↓
-Delete Local Image
+Push Image to AWS ECR
   ↓
-Update Manifests
+Delete Image Locally (Disk Space Cleanup)
   ↓
-Push Manifests
+Update Kubernetes Manifest Tag
+  ↓
+Push Updated Manifests to GitHub (GitOps)
 ```
 
-### What the pipeline does
+### Key Automated Actions
 
-* Pulls source code from GitHub
-* Builds Docker images for each service
-* Scans images with Trivy
-* Pushes images to Amazon ECR
-* Updates Kubernetes manifests with the new image tags
-* Pushes updated manifests back to GitHub
-* Uses a Jenkins shared library to reduce repetition
+- **DevSecOps Code Scanning:** Runs SonarScanner via Docker against SonarQube to analyze code quality and security vulnerabilities.
+- **Microservice Builds:** Contextual Docker builds targeting `docker/iVolveFinalProject/<service-name>`.
+- **Container Vulnerability Analysis:** Uses Trivy CLI to detect High and Critical severity CVEs in built images.
+- **AWS ECR Push:** Authenticates securely to AWS ECR via Jenkins Credentials (AWS_ACCESS_KEY_ID & AWS_SECRET_ACCESS_KEY).
+- **Disk Space Management:** Removes local build images after pushing to keep EC2 disk usage low.
+- **GitOps Trigger:** Updates the image tag in `k8s/<service>-deploy-svc.yml` using sed and commits the change back to GitHub using github-credentials to trigger automatic deployment in ArgoCD.
 
-### Example commands used in the pipeline
+### Shared Library Structure (vars/)
 
-```bash
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME --kubeconfig $WORKSPACE/kubeconfig.yaml
-docker build -t $IMAGE_NAME:$BUILD_NUMBER .
-trivy image $IMAGE_NAME:$BUILD_NUMBER
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME:$BUILD_NUMBER
-```
+To enforce DRY (Don't Repeat Yourself) principles across all microservice pipelines, reusable Groovy pipeline steps are modularized in the vars/ folder:
 
-### Shared Library
+- `vars/sonarscan.groovy` - Executes SonarScanner CLI via Docker container.
+- `vars/buildimage.groovy` - Builds microservice Docker image with dynamic context paths.
+- `vars/scanimage.groovy` - Runs Trivy vulnerability scans on local images.
+- `vars/pushimage.groovy` - Logs into AWS ECR and pushes tagged images.
+- `vars/deleteimagelocally.groovy` - Purges local Docker images post-push.
+- `vars/updatemanifests.groovy` - Replaces image tags inside k8s/*.yml files.
+- `vars/pushmanifests.groovy` - Commits and pushes modified k8s/ manifests back to GitHub.
 
-The `jenkins/vars/` directory contains shared pipeline logic used across microservices.
+### Pipeline Files
+`Jenkinsfile.frontend` - Pipeline for Frontend microservice
+`Jenkinsfile.auth` - Pipeline for Auth microservice
+`Jenkinsfile.roadmap` - Pipeline for Roadmap microservice
+
+### Notes:
+- Each Jenkinsfile runs as a seperate pipeline waiting for code commit.
+- dont forget to configure credentials for `github-credentials` , `aws_credentials` and `sonarqube-token` generated when runing ansible playbook.
 
 ### Test Results
+- All 7 pipeline stages executed with 100% success.
+- SonarQube dashboard populated at http://<EC2_PUBLIC_IP>:9000.
+- Docker images successfully built and scanned by Trivy.
+- ECR repositories populated with tag-indexed images.
+- Kubernetes manifests automatically updated and pushed to GitHub.
 
-* Jenkins job ran successfully.
-* Docker images were built successfully.
-* Trivy scan completed successfully.
-* Images were pushed to Amazon ECR.
-* Kubernetes manifests were updated and pushed.
-
+![alt text](screenshots/image-9.png)
+![alt text](screenshots/image-10.png)
+![alt text](screenshots/image-11.png)
 ---
 
 ## Continuous Deployment with ArgoCD
 
-ArgoCD is used to synchronize the Kubernetes manifests from GitHub to the EKS cluster.
+ArgoCD is deployed inside the EKS cluster to handle Continuous Deployment (CD) following the GitOps paradigm.
 
-The assignment requires ArgoCD to sync and deploy the app into the cluster.
+### GitOps Workflow
 
-### How it works
+1. **Jenkins (CI)** pushes updated image tags to the `k8s/` folder in GitHub.
+2. **ArgoCD (CD)** polls the GitHub repository for changes in the `k8s/` path.
+3. ArgoCD automatically applies the changes to the `ivolve` namespace in EKS.
+4. ArgoCD enforces **self-healing** and **pruning**, ensuring cluster state perfectly matches the Git repository.
 
-1. Jenkins updates the Kubernetes manifests in GitHub.
-2. ArgoCD watches the repository.
-3. ArgoCD detects changes automatically.
-4. ArgoCD syncs the desired state to the EKS cluster.
+### ArgoCD Application Specification
 
-### Example ArgoCD application
+* **Repository:** `https://github.com/ahmeddhussain/ivolve-CloudDevOpsProject.git`
+* **Path:** `k8s/`
+* **Target Namespace:** `ivolve`
+* **Auto Sync:** Enabled (`prune = true`, `selfHeal = true`)
+### EKS Cluster Setup & Deployment Steps
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: clouddevopsproject
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/<your-username>/CloudDevOpsProject.git
-    targetRevision: main
-    path: kubernetes
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: ivolve
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+1. **Connect `kubectl` to EKS Cluster:**
+```bash
+   aws eks update-kubeconfig --region us-east-1 --name ivolve-eks-cluster
+```
+ OR ANY other way you find convient.
+
+2. **Install ArgoCD Controller on EKS:**
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+3. **Deploy ArgoCD Application Manifest:**
+```bash
+kubectl apply -f argocd/application.yml
+```
+4. **Verify Microservices & Ingress:**
+```bash
+kubectl get pods -n ivolve
+kubectl get svc -n ivolve
+kubectl get ingress -n ivolve
 ```
 
 ### Test Results
 
-* ArgoCD application was created successfully.
-* Application synced successfully.
-* Application remained in a healthy state.
-* Kubernetes resources were deployed automatically from Git.
+* ArgoCD successfully synced all microservices and MySQL StatefulSet.
+* Frontend Ingress provisioned the AWS Application Load Balancer.
+
+![ArgoCD Dashboard Sync](screenshots/argocd-dashboard.png)
 
 ---
 
