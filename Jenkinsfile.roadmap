@@ -14,7 +14,7 @@ pipeline {
     stages {
         stage('Build Image') {
             steps {
-                buildImage(env.IMAGE_NAME, env.IMAGE_TAG)
+                buildImage(env.IMAGE_NAME, env.IMAGE_TAG, "docker/iVolveFinalProject/roadmap")
             }
         }
         stage('SonarQube Code Quality Scan') {
