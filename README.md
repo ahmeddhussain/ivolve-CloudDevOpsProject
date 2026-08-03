@@ -85,6 +85,7 @@ ansible-playbook site.yml --ask-vault-pass
 
 **5. Deploy ArgoCD** — [details](#continuous-deployment-with-argocd)
 ```bash
+aws eks update-kubeconfig --region us-east-1 --name ivolve-eks-cluster
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl apply -f ../argocd/application.yml
