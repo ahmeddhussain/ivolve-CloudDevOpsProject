@@ -6,7 +6,7 @@ def call(String gitCredentialsId, String commitMessage) {
             git config user.name "Jenkins CI"
             git add k8s/
             git commit -m "${commitMessage}" || echo "No changes to commit"
-            git push https://${GIT_USERNAME}:${GIT_PASSWORD}@https://github.com/ahmeddhussain/ivolve-CloudDevOpsProject.git HEAD:main
+            git push https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/ahmeddhussain/ivolve-CloudDevOpsProject.git HEAD:main
         """
     }
 }
