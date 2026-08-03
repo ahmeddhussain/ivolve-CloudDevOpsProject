@@ -8,7 +8,7 @@ pipeline {
         ECR_URL        = "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
         IMAGE_NAME     = 'ivolve-auth'
         IMAGE_TAG      = "${BUILD_NUMBER}"
-        MANIFEST_PATH  = 'k8s/auth-deploy-svc.yaml'
+        MANIFEST_PATH  = 'k8s/auth-deploy-svc.yml'
         GIT_CREDS      = 'github-credentials'
     }
     stages {

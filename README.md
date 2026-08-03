@@ -285,7 +285,7 @@ Ansible is used to automatically configure the Jenkins EC2 instance after Terraf
 
 ### What Ansible does
 
-* **System & Dependencies:** Installs Java 21 (OpenJDK), and base utilities.
+* **System & Dependencies:** Installs Java 21 (OpenJDK), aws-cli and base utilities.
 * **Container Environment:** Installs Docker Engine and grants ubuntu and jenkins non-root execution permissions.
 * **Security Scanner:** Installs Trivy CLI for container image scanning inside Jenkins pipelines.
 * **SonarQube Code Quality Server:**
