@@ -500,7 +500,56 @@ Then use the `EXTERNAL-IP` coloumn and login using `admin` and output initial pa
 * Frontend Ingress provisioned the AWS Application Load Balancer.
 
 ![alt text](screenshots/image-12.png)
+
 ---
+## System Verification & End-to-End Application Testing
+
+This section outlines the testing procedures used to verify the platform infrastructure and validate end-to-end application functionality across all microservices and the persistent database.
+
+---
+
+####  Platform Infrastructure Verification
+
+* **Terraform Provisioning:** Verified S3 backend remote state locking and resource provisioning (VPC, Subnets, EKS Cluster, ECR Repositories, EC2 Instance).
+* **Ansible Configuration:** Verified zero-touch provisioning of Java 21, Docker, Trivy, SonarQube Server (Port 9000), and Jenkins (Port 8080).
+* **Jenkins CI Pipelines:** Verified 100% green build execution across all 3 microservices (`frontend-pipeline`, `auth-pipeline`, `roadmap-pipeline`) covering:
+  1. SonarQube Code Quality Analysis
+  2. Docker Image Build
+  3. Trivy Container Security Scan
+  4. AWS ECR Image Push
+  5. Local Docker Image Cleanup
+  6. Kubernetes Manifest Image Tag Update (`k8s/*.yml`)
+  7. Git Push back to GitHub
+* **ArgoCD GitOps CD:** Verified automated synchronization from GitHub `k8s/` manifests to live pods in the EKS `ivolve` namespace.
+
+---
+
+#### End-to-End Application Functionality Testing
+
+To validate full system functionality, traffic was tested flowing from the public Frontend interface through the backend microservices down to the persistent MySQL database.
+
+##### Step 1: Access Frontend Web Application
+Open the public Ingress Load Balancer URL in your browser:
+```text
+http://<AWS_LOADBALANCER_URL>
+```
+![alt text](screenshots/image14.png)
+![alt text](screenshots/image13.png)
+
+##### Step 2: Test Authentication Microservice (auth-service)
+ - Navigate to the Sign Up / Register page on the Frontend UI.
+ - Create a new test user account (Username: testuser, Password: testpassword123).
+ - The Frontend sends an HTTP POST request to auth-service (Port 5000), which processes the request and writes the user record into MySQL.
+ - Log in with the newly created credentials to confirm JWT token generation.
+
+
+
+
+
+
+
+
+
 
 ## Troubleshooting
 

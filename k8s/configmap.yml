@@ -8,4 +8,6 @@ data:
   DB_PORT: "3306"
   DB_NAME: "ivolve"
   DB_USER: "ahmed"
+  AUTH_SERVICE_URL: "http://auth-service:5000"
+  ROADMAP_SERVICE_URL: "http://roadmap-service:8080"
   
