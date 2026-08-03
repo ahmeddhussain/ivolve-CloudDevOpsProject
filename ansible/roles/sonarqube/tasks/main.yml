@@ -1,0 +1,91 @@
+---
+- name: Set vm.max_map_count for Elasticsearch (SonarQube requirement)
+  sysctl:
+    name: vm.max_map_count
+    value: '262144'
+    state: present
+    reload: yes
+
+- name: Increase file descriptor limits for SonarQube
+  sysctl:
+    name: fs.file-max
+    value: '131072'
+    state: present
+    reload: yes
+
+- name: Create SonarQube Docker Volume for persistence
+  docker_volume:
+    name: sonarqube_data
+    state: present
+
+- name: Run SonarQube Container
+  docker_container:
+    name: sonarqube
+    image: sonarqube:community
+    state: started
+    restart_policy: always
+    published_ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+
+- name: Wait for SonarQube port 9000 to be open
+  wait_for:
+    port: 9000
+    delay: 10
+    timeout: 180
+
+- name: Wait for SonarQube API system status to be UP
+  uri:
+    url: http://localhost:9000/api/system/status
+    method: GET
+    status_code: 200
+  register: sonarqube_status
+  until: sonarqube_status.status == 200 and (sonarqube_status.json.status | default('')) == "UP"
+  retries: 30
+  delay: 10
+
+- name: Change default admin password via REST API
+  uri:
+    url: http://localhost:9000/api/users/change_password
+    method: POST
+    user: admin
+    password: admin
+    force_basic_auth: yes
+    body_format: form-urlencoded
+    body:
+      login: "admin"
+      previousPassword: "admin"
+      password: "{{ vault_sonarqube_admin_password }}"
+    status_code: [200, 204]
+  ignore_errors: true
+
+- name: Disable 'Force User Authentication' (Allows seamless pipeline execution)
+  uri:
+    url: http://localhost:9000/api/settings/set
+    method: POST
+    user: admin
+    password: "{{ vault_sonarqube_admin_password }}"
+    force_basic_auth: yes
+    body_format: form-urlencoded
+    body:
+      key: "sonar.forceAuthentication"
+      value: "false"
+    status_code: [200, 204]
+
+- name: Generate SonarQube Token for Jenkins Pipeline
+  uri:
+    url: http://localhost:9000/api/user_tokens/generate
+    method: POST
+    user: admin
+    password: "{{ vault_sonarqube_admin_password }}"
+    force_basic_auth: yes
+    body_format: form-urlencoded
+    body:
+      name: "jenkins-pipeline-token"
+    status_code: [200, 400]
+  register: sonarqube_token_response
+
+- name: Display SonarQube Token (Save this for Jenkins!)
+  debug:
+    msg: "SonarQube Token: {{ sonarqube_token_response.json.token if sonarqube_token_response.status == 200 else 'Token already generated' }}"

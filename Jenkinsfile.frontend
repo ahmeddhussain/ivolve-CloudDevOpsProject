@@ -1,0 +1,51 @@
+@Library('jenkins-shared-library') _
+
+pipeline {
+    agent any
+    environment {
+        AWS_REGION     = 'us-east-1'
+        AWS_ACCOUNT_ID = '800770414458' 
+        ECR_URL        = "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
+        IMAGE_NAME     = 'ivolve-frontend'
+        IMAGE_TAG      = "${BUILD_NUMBER}"
+        MANIFEST_PATH  = 'k8s/frontend-deploy-svc.yaml'
+        GIT_CREDS      = 'github-credentials'
+    }
+    stages {
+        stage('Build Image') {
+            steps {
+                buildImage(env.IMAGE_NAME, env.IMAGE_TAG)
+            }
+        }
+        stage('SonarQube Code Quality Scan') {
+            steps {
+                sonarScan(env.IMAGE_NAME)
+            }
+        }
+        stage('Scan Image') {
+            steps {
+                scanImage(env.IMAGE_NAME, env.IMAGE_TAG)
+            }
+        }
+        stage('Push Image') {
+            steps {
+                pushImage(env.AWS_REGION, env.ECR_URL, env.IMAGE_NAME, env.IMAGE_TAG)
+            }
+        }
+        stage('Delete Image Locally') {
+            steps {
+                deleteImageLocally(env.ECR_URL, env.IMAGE_NAME, env.IMAGE_TAG)
+            }
+        }
+        stage('Update Manifests') {
+            steps {
+                updateManifests(env.MANIFEST_PATH, env.IMAGE_NAME, env.IMAGE_TAG, env.ECR_URL)
+            }
+        }
+        stage('Push Manifests') {
+            steps {
+                pushManifests(env.GIT_CREDS, "ci(frontend): update image tag to ${env.IMAGE_TAG}")
+            }
+        }
+    }
+}

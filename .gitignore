@@ -1,0 +1,13 @@
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfvars
+
+# SSH Keys & Secrets (CRITICAL)
+*.pem
+*.key
+terraform/ivolve.pem
+
+# Ansible Vault secret
+ansible/group_vars/all/vault.yml

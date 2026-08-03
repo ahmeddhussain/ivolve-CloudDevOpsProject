@@ -1,0 +1,11 @@
+---
+- name: Configure Jenkins & SonarQube EC2 Instance
+  hosts: tag_Role_Jenkins
+  become: true
+  roles:
+    - common
+    - docker
+    - trivy
+    - sonarqube
+    - jenkins
+    - jenkins-config
