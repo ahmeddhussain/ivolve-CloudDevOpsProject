@@ -431,7 +431,7 @@ To enforce DRY (Don't Repeat Yourself) principles across all microservice pipeli
 
 ### Test Results
 - All 7 pipeline stages executed with 100% success.
-- SonarQube dashboard populated at http://<EC2_PUBLIC_IP>:9000.
+- SonarQube dashboard populated at `http://<EC2_PUBLIC_IP>:9000`.
 - Docker images successfully built and scanned by Trivy.
 - ECR repositories populated with tag-indexed images.
 - Kubernetes manifests automatically updated and pushed to GitHub.
@@ -462,7 +462,7 @@ ArgoCD is deployed inside the EKS cluster to handle Continuous Deployment (CD) f
 
 1. **Connect `kubectl` to EKS Cluster:**
 ```bash
-   aws eks update-kubeconfig --region us-east-1 --name ivolve-eks-cluster
+aws eks update-kubeconfig --region us-east-1 --name ivolve-eks-cluster
 ```
  OR ANY other way you find convient.
 
@@ -481,6 +481,11 @@ kubectl get pods -n ivolve
 kubectl get svc -n ivolve
 kubectl get ingress -n ivolve
 ```
+5. **Get the first Admin password**
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+```
+6. **Login to the
 
 ### Test Results
 
