@@ -82,6 +82,7 @@ ansible-playbook site.yml --ask-vault-pass
 - Add Global Pipeline Library `jenkins-shared-library` pointing at this repo.
 - Add credentials: `github-credentials`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `sonarqube-token`.
 - Create 3 pipeline jobs from `Jenkinsfile.frontend`, `Jenkinsfile.auth`, `Jenkinsfile.roadmap`, and build each once — this pushes images to ECR and writes the tags into `k8s/`.
+
 **5. Deploy ArgoCD** — [details](#continuous-deployment-with-argocd)
 ```bash
 kubectl create namespace argocd
