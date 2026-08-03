@@ -464,16 +464,18 @@ ArgoCD is deployed inside the EKS cluster to handle Continuous Deployment (CD) f
 ```bash
 aws eks update-kubeconfig --region us-east-1 --name ivolve-eks-cluster
 ```
- OR ANY other way you find convient.
+ OR any other way you find convient.
 
 2. **Install ArgoCD Controller on EKS:**
 ```bash
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
-3. **Deploy ArgoCD Application Manifest:**
+3. **Deploy ArgoCD Application Manifests:**
 ```bash
 kubectl apply -f argocd/application.yml
+kubectl apply -f argocd/svc-lb.yml
+
 ```
 4. **Verify Microservices & Ingress:**
 ```bash
@@ -481,19 +483,20 @@ kubectl get pods -n ivolve
 kubectl get svc -n ivolve
 kubectl get ingress -n ivolve
 ```
-5. **Get the first Admin password**
+5. **Get the first Admin password and `EXTERNAL-IP`**
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+kubectl get svc argocd-server -n argocd
 ```
-6. **Login to the
+
+Then use the `EXTERNAL-IP` coloumn and login using `admin` and output initial password.
 
 ### Test Results
 
 * ArgoCD successfully synced all microservices and MySQL StatefulSet.
 * Frontend Ingress provisioned the AWS Application Load Balancer.
 
-![ArgoCD Dashboard Sync](screenshots/argocd-dashboard.png)
-
+![alt text](screenshots/image-12.png)
 ---
 
 ## Troubleshooting
