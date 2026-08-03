@@ -12,14 +12,15 @@ pipeline {
         GIT_CREDS      = 'github-credentials'
     }
     stages {
-        stage('SonarQube Code Quality Scan') {
-            steps {
-                sonarscan(env.IMAGE_NAME)
-            }
-        }
+
         stage('Build Image') {
             steps {
                 buildimage(env.IMAGE_NAME, env.IMAGE_TAG ,"docker/iVolveFinalProject/frontend")
+            }
+        }
+                stage('SonarQube Code Quality Scan') {
+            steps {
+                sonarscan(env.IMAGE_NAME)
             }
         }
         stage('Scan Image') {
