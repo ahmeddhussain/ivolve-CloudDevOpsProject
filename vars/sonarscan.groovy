@@ -9,6 +9,7 @@ def call(String projectKey, String sourceDir = ".", String credentialsId = 'sona
               -Dsonar.sources=${sourceDir} \
               -Dsonar.host.url="http://localhost:9000" \
               -Dsonar.token="\${SONAR_TOKEN}" \
+              -Dsonar.java.binaries=. \
               -Dsonar.exclusions="**/node_modules/**,**/target/**,**/*.jar,**/*.war,**/*.png,**/*.jpg,**/*.jpeg,**/*.svg" \
               -Dsonar.javascript.node.maxspace=512 \
               || echo "SonarQube scan completed with warnings"
