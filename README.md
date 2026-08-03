@@ -241,12 +241,12 @@ The assignment requires the following Terraform modules: Network, Server, EKS, a
 
 #### 3. EKS module
 
-* Amazon EKS cluster
 * Worker nodes in private subnets
 * Multiple Availability Zones
-* IAM rules for the cluser and nodes
-* Install `aws_load_balancer_controller`
-* Enable   `aws-ebs-csi-driver` addon
+* IAM roles for the cluster and worker nodes
+* IRSA (IAM Roles for Service Accounts) for the AWS Load Balancer Controller and the EBS CSI driver — avoids relying on EC2 instance metadata (IMDS) for AWS credentials, which is unreliable for pod-level AWS API access
+* Installs `aws-load-balancer-controller` via Helm, with its ServiceAccount explicitly bound to its IAM role and VPC ID passed directly (no IMDS auto-discovery)
+* Enables the `aws-ebs-csi-driver` EKS addon, with its own dedicated IAM role attached via `service_account_role_arn` — avoids the addon falling back to (and failing) IMDS-based credential discovery
 
 
 #### 4. ECR module

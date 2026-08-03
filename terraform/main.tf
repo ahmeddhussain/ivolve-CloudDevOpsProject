@@ -30,7 +30,7 @@ module "eks" {
 module "ecr" {
   source            = "./modules/ecr"
   ecr_frontend_repo = var.ecr_frontend_repo
-  ecr_auth_repo  = var.ecr_auth_repo
-  ecr_roadmap_repo      = var.ecr_roadmap_repo
+  ecr_auth_repo     = var.ecr_auth_repo
+  ecr_roadmap_repo  = var.ecr_roadmap_repo
 }
 
