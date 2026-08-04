@@ -111,21 +111,6 @@ Open `http://<ALB_DNS_NAME>/grafana` once synced.
 
 ## Architecture
 
-### Application Flow
-
-```text
-Browser
-  │
-  ▼
-Frontend (Node.js / Express / EJS)
-  │
-  ├──────────────► auth-service (Flask) ─────────────► MySQL
-  │
-  └──────────────► roadmap-service (Spring Boot)
-```
-
-### DevOps Flow
- 
 ![](project-architecture.png)
  
 ### Infrastructure Overview
