@@ -279,7 +279,7 @@ Ansible configures the Jenkins/SonarQube EC2 instance after Terraform provisions
 
 ### What each role does
 
-* **`common`** —> installs OpenJDK 21, AWS CLI, and base packages.
+* **`common`** —> installs OpenJDK 21, AWS CLI, SoanrQube CLI and base packages.
 * **`docker`** —> installs Docker Engine, adds `ubuntu` to the `docker` group.
 * **`trivy`** —> installs the Trivy CLI for image scanning.
 * **`sonarqube`** —> runs SonarQube Community in Docker on port 9000, tunes `vm.max_map_count`/`fs.file-max`, waits for the API to report `UP`, then via REST API: changes the default admin password, and generates a pipeline token.

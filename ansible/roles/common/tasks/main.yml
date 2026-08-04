@@ -16,4 +16,57 @@
       - openjdk-21-jdk
       - awscli 
     state: present
+- name: Check if sonar-scanner is already installed
+  stat:
+    path: /opt/sonar-scanner/bin/sonar-scanner
+  register: sonar_scanner_installed
+
+- name: Download SonarScanner CLI
+  get_url:
+    url: https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+    dest: /tmp/sonar-scanner-cli.zip
+    mode: '0644'
+  when: not sonar_scanner_installed.stat.exists
+
+- name: Install unzip (required to extract SonarScanner)
+  apt:
+    name: unzip
+    state: present
+  when: not sonar_scanner_installed.stat.exists
+
+- name: Extract SonarScanner CLI
+  unarchive:
+    src: /tmp/sonar-scanner-cli.zip
+    dest: /opt
+    remote_src: yes
+  when: not sonar_scanner_installed.stat.exists
+
+- name: Symlink extracted folder to /opt/sonar-scanner
+  file:
+    src: "/opt/sonar-scanner-5.0.1.3006-linux"
+    dest: "/opt/sonar-scanner"
+    state: link
+  when: not sonar_scanner_installed.stat.exists
+
+- name: Symlink sonar-scanner binary into PATH
+  file:
+    src: /opt/sonar-scanner/bin/sonar-scanner
+    dest: /usr/local/bin/sonar-scanner
+    state: link
+  when: not sonar_scanner_installed.stat.exists
+
+- name: Clean up downloaded zip
+  file:
+    path: /tmp/sonar-scanner-cli.zip
+    state: absent
+  when: not sonar_scanner_installed.stat.exists
+
+- name: Verify sonar-scanner installation
+  command: sonar-scanner -v
+  register: sonar_scanner_version
+  changed_when: false
+
+- name: Show installed SonarScanner version
+  debug:
+    var: sonar_scanner_version.stdout_lines
 

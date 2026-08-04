@@ -6,6 +6,8 @@ metadata:
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/group.name: ivolve-shared-alb
+    alb.ingress.kubernetes.io/group.order: "10"
 spec:
   ingressClassName: alb
   rules:
