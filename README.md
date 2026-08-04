@@ -17,9 +17,11 @@ End-to-end DevOps pipeline for a microservices-based web application: containeri
 9. [Container Orchestration with Kubernetes](#container-orchestration-with-kubernetes)
 10. [Continuous Integration with Jenkins](#continuous-integration-with-jenkins)
 11. [Continuous Deployment with ArgoCD](#continuous-deployment-with-argocd)
-12. [System Verification & End-to-End Testing](#system-verification--end-to-end-testing)
-13. [Real-World Troubleshooting & Solutions](#real-world-troubleshooting--solutions)
-14. [Screenshots Index](#screenshots-index)
+12. [Monitoring with Prometheus & Grafana](#monitoring-with-prometheus--grafana)
+13. [System Verification & End-to-End Testing](#system-verification--end-to-end-testing)
+14. [Real-World Troubleshooting & Solutions](#real-world-troubleshooting--solutions)
+15. [Screenshots Index](#screenshots-index)
+
 
 ---
 
@@ -99,6 +101,12 @@ kubectl get ingress -n ivolve   # grab the ALB address
 ```
 Open `http://<ALB_DNS_NAME>/signup` in a browser.
  
+**7. (Optional) Deploy monitoring** — [details](#monitoring-with-prometheus--grafana)
+```bash
+kubectl apply -f argocd/monitoring-application.yml
+```
+Open `http://<ALB_DNS_NAME>/grafana` once synced.
+
 ---
 
 ## Architecture
@@ -117,27 +125,11 @@ Frontend (Node.js / Express / EJS)
 ```
 
 ### DevOps Flow
-
-```mermaid
-flowchart LR
-    Dev[Developer] --> Git[GitHub Repository]
-    Git --> Jenkins[Jenkins Pipeline]
-    Jenkins --> Sonar[SonarQube Scan]
-    Sonar --> Build[Build Docker Image]
-    Build --> Scan[Trivy Scan]
-    Scan --> ECR[Amazon ECR]
-    Jenkins --> Update[Update Kubernetes Manifests]
-    Update --> Git
-    Git --> ArgoCD[ArgoCD]
-    ArgoCD --> EKS[Amazon EKS Cluster]
-    EKS --> Frontend[Frontend Service]
-    EKS --> Auth[Auth Service]
-    EKS --> Roadmap[Roadmap Service]
-    EKS --> DB[MySQL StatefulSet]
-```
-
+ 
+![](project-architecture.png)
+ 
 ### Infrastructure Overview
-
+ 
 ```text
 Internet
   │
@@ -151,7 +143,7 @@ AWS VPC
   │
   ├── NAT Gateway, Internet Gateway
   └── Security Groups / Network ACLs
-
+ 
 Amazon ECR ── stores built images (frontend, auth, roadmap)
 AWS Load Balancer Controller (Helm, IRSA) ── provisions the ALB from the frontend Ingress
 Amazon EBS CSI Driver (IRSA) ── backs the MySQL StatefulSet's persistent volume
@@ -282,7 +274,7 @@ Ansible configures the Jenkins/SonarQube EC2 instance after Terraform provisions
 * **`common`** —> installs OpenJDK 21, AWS CLI, SoanrQube CLI and base packages.
 * **`docker`** —> installs Docker Engine, adds `ubuntu` to the `docker` group.
 * **`trivy`** —> installs the Trivy CLI for image scanning.
-* **`sonarqube`** —> runs SonarQube Community in Docker on port 9000, tunes `vm.max_map_count`/`fs.file-max`, waits for the API to report `UP`, then via REST API: changes the default admin password, and generates a pipeline token.
+* **`sonarqube`** —> runs SonarQube Community in Docker on port 9000, tunes `vm.max_map_count`/`fs.file-max`, waits for the API to report `UP`, then via REST API: changes the default admin password with vault password, and generates a pipeline token.
 * **`jenkins`** —> installs Jenkins, adds `jenkins` to the `docker` group, starts the service.
 * **`jenkins-config`** —> waits for the initial admin password file, then drops a Groovy script into `init.groovy.d` that creates the admin account from Vault variables, installs the required plugins (Git, GitHub, Docker Pipeline, SonarQube Scanner, Pipeline, etc.), and marks the setup wizard complete — so Jenkins comes up fully configured with no manual wizard steps.
 
@@ -462,12 +454,60 @@ Log into the ArgoCD UI at the `EXTERNAL-IP` with user `admin` and the password f
 
 ### Test Results
 
-* ArgoCD shows the `ivolve-microservices` Application as **Healthy** and **Synced**, with the full resource tree (Deployments, ReplicaSets, Pods, the MySQL StatefulSet + PVC, and the frontend Ingress) all green.
+* ArgoCD shows the `ivolve-microservices` & `ivolve-mointoring` Applications as **Healthy** and **Synced**, with the full resource tree (Deployments, ReplicaSets, Pods, the MySQL StatefulSet + PVC, and the frontend Ingress) all green.
 
   ![ArgoCD Application: Healthy, Synced, full resource tree](screenshots/image-12.png)
+  ![alt text](screenshots/image-21.png)
 
 ---
 
+## Monitoring with Prometheus & Grafana
+ 
+Cluster and infrastructure metrics via the `kube-prometheus-stack` Helm chart (Prometheus + Grafana + Alertmanager + node-exporter + kube-state-metrics), deployed the same GitOps way as the app itself — as an ArgoCD Application whose `source` is a Helm chart rather than a git path.
+ 
+### Scope: infrastructure-only
+ 
+This covers **cluster and pod-level metrics only** — node CPU/memory, pod restarts, resource usage, EKS control-plane health, and Kubernetes object state (Deployments, StatefulSets, PVCs). All of that comes from `node-exporter` and `kube-state-metrics`, both bundled in the chart and both bundled with their own `ServiceMonitor`s (`monitoring.coreos.com/v1`, installed as part of the same Helm release).
+ 
+What this setup does **not** give you: application-level metrics like requests/sec, response latency, or error rate per microservice. Those only exist if the app itself exposes them (e.g. via `prom-client`, `prometheus-flask-exporter`, or Spring Actuator) — genuinely out of scope here since it requires touching the app source.
+ 
+### Why it shares the ALB
+ 
+Grafana shares the **same ALB** as the frontend instead of provisioning a second load balancer, via the AWS Load Balancer Controller's `IngressGroup` feature — both `k8s/ingress.yml` (frontend, `/`) and the chart's own Grafana ingress (`/grafana`) carry the annotation `alb.ingress.kubernetes.io/group.name: ivolve-shared-alb`, so the controller merges them into one ALB with two path rules. `group.order` (`10` for the frontend, `1` for Grafana) makes sure the more specific `/grafana` rule is evaluated before the frontend's catch-all `/`.
+ 
+### Deploy
+ 
+```bash
+kubectl apply -f argocd/monitoring-application.yml
+```
+ 
+ 
+### Access Grafana
+ 
+```text
+http://<ALB_DNS_NAME>/grafana
+```
+ 
+Default login is `admin` / the chart's auto-generated admin password:
+```bash
+kubectl get secret -n monitoring monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d; echo
+```
+![alt text](screenshots/image-17.png) 
+
+Grafana ships with pre-built dashboards for Kubernetes cluster health, node resource usage, and per-namespace/per-pod resource consumption out of the box — no extra setup needed for those.
+
+### Test Results
+
+Go to `http://<ALB_DNS_NAME>/grafana`, log in, then Dashboards in the left sidebar. The chart ships a set of pre-built dashboards — these are the ones worth opening:
+
+- **Kubernetes / Compute Resources / Cluster:** Total CPU/memory usage across your whole 2-node cluster, as live graph
+- **Node Exporter / Nodes	Raw host-level:** metrics per EC2 node — CPU, memory, disk, network, load average
+
+![alt text](screenshots/image-18.png) 
+![alt text](screenshots/image-19.png) 
+![alt text](screenshots/image-20.png) 
+
+---
 ## System Verification & End-to-End Testing
 
 Full-chain verification: Frontend → backend microservices → MySQL, all running in EKS.
@@ -533,6 +573,7 @@ Issues actually hit while building this project, and how they were resolved.
 * **Ingress `ADDRESS` pending:** no AWS Load Balancer Controller was installed, so nothing could provision an ALB for `ingressClassName: alb`. **Fix:** installed the controller via Helm (now done directly by Terraform) with its own IRSA role.
 * **ALB Controller `CrashLoopBackOff` (IMDS timeout):** `failed to get VPC ID from instance metadata` / `failed to introspect region from EC2Metadata` — same root cause as the EBS CSI issue. **Fix:** passed `vpcId` and `region` explicitly to the Helm release instead of relying on IMDS auto-discovery, and bound the controller's ServiceAccount to its IRSA role via the `eks.amazonaws.com/role-arn` annotation.
 
+
 ---
 
 ## Screenshots Index
@@ -553,11 +594,18 @@ Quick reference for every file in [`screenshots/`](./screenshots/) and where it'
 | `image-9.png` | Jenkins: all 3 pipelines green | Jenkins CI |
 | `image-10.png` | SonarQube: all 3 projects passed | Jenkins CI |
 | `image-11.png` | ECR `ivolve-frontend`, tagged images | Jenkins CI |
-| `image-12.png` | ArgoCD: Healthy + Synced resource tree | ArgoCD |
+| `image-12.png` | ArgoCD: `ivolve-microservices` Healthy + Synced resource tree | ArgoCD |
 | `image-13.png` | Signup page via ALB DNS name | System Verification |
 | `image-14.png` | `kubectl get pods/svc/ingress -n ivolve` | Kubernetes |
 | `image-15.png` | Roadmap page via ALB DNS name | System Verification |
 | `image-16.png` | `mysql-0` pod, persisted user record | System Verification |
+| `image-17.png` | Grafana login screen | Mointoring |
+| `image-18.png` | Grafana Kubernetes / Compute Resources / Cluster Dashboard | Mointoring |
+| `image-19.png` | Grafana Node Exporter / Nodes Dashboard | Mointoring |
+| `image-20.png` | Grafana Kubernetes / Compute Resources / Computing Dashboard | Mointoring |
+| `image-21.png` | ArgoCD: `ivolve-mointoring` Healthy + Synced resource tree | ArgoCD |
+
+
 
 ---
 
