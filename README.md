@@ -487,6 +487,7 @@ Go to `http://<ALB_DNS_NAME>/grafana`, log in, then Dashboards in the left sideb
 
 - **Kubernetes / Compute Resources / Cluster:** Total CPU/memory usage across your whole 2-node cluster, as live graph
 - **Node Exporter / Nodes	Raw host-level:** metrics per EC2 node — CPU, memory, disk, network, load average
+- **Kubernetes / Compute Resources / Namespace (Pods)**:	Switch the namespace dropdown to ivolve — per-pod CPU/memory for your frontend, auth-service, roadmap-service, and mysql-0
 
 ![alt text](screenshots/image-18.png) 
 ![alt text](screenshots/image-19.png) 
