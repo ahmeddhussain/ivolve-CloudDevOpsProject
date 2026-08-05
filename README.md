@@ -113,27 +113,6 @@ Open `http://<ALB_DNS_NAME>/grafana` once synced.
 
 ![](project-architecture.png)
  
-### Infrastructure Overview
- 
-```text
-Internet
-  │
-  ▼
-AWS VPC
-  ├── Public Subnets (2 AZs)
-  │     └── Jenkins + SonarQube EC2
-  │
-  ├── Private Subnets (2 AZs)
-  │     └── EKS Worker Nodes
-  │
-  ├── NAT Gateway, Internet Gateway
-  └── Security Groups / Network ACLs
- 
-Amazon ECR ── stores built images (frontend, auth, roadmap)
-AWS Load Balancer Controller (Helm, IRSA) ── provisions the ALB from the frontend Ingress
-Amazon EBS CSI Driver (IRSA) ── backs the MySQL StatefulSet's persistent volume
-ArgoCD ── GitOps-syncs k8s/ manifests to the EKS `ivolve` namespace
-```
 
 ---
 
@@ -557,7 +536,7 @@ Issues actually hit while building this project, and how they were resolved.
 
 * **PVC stuck `Pending` (EBS CSI auth failure):** the EBS CSI controller pods were `CrashLoopBackOff` with `no EC2 IMDS role found` — IMDS isn't a reliable credential source for pod-level AWS API access on EKS. **Fix:** a dedicated IRSA role with `AmazonEBSCSIDriverPolicy`, bound via `service_account_role_arn` on the `aws_eks_addon.ebs_csi` resource.
 * **Ingress `ADDRESS` pending:** no AWS Load Balancer Controller was installed, so nothing could provision an ALB for `ingressClassName: alb`. **Fix:** installed the controller via Helm (now done directly by Terraform) with its own IRSA role.
-* **ALB Controller `CrashLoopBackOff` (IMDS timeout):** `failed to get VPC ID from instance metadata` / `failed to introspect region from EC2Metadata` — same root cause as the EBS CSI issue. **Fix:** passed `vpcId` and `region` explicitly to the Helm release instead of relying on IMDS auto-discovery, and bound the controller's ServiceAccount to its IRSA role via the `eks.amazonaws.com/role-arn` annotation.
+
 
 
 ---
