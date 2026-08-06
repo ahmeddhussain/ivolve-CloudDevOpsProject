@@ -1,0 +1,12 @@
+configuration-as-code:1775.v810dc950b_514
+cloudbees-folder:6.988.v03d8a_10a_318b_
+build-timeout:1.33
+credentials-binding:657.v2b_19db_4581cb_
+timestamper:1.28
+ws-cleanup:0.48
+workflow-aggregator:600.vb_57cdd26fdd7
+pipeline-stage-view:2.35
+git:5.2.2
+github:1.39.0
+docker-workflow:580.vc0c340686b_54
+sonar:2.17.2

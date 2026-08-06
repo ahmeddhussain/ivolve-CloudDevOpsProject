@@ -24,7 +24,7 @@ resource "aws_security_group" "jenkins_sg" {
     from_port   = 9000
     to_port     = 9000
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.my_ip]
   }
 
   # Allow all outbound traffic

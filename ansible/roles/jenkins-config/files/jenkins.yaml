@@ -1,0 +1,15 @@
+jenkins:
+  systemMessage: "iVolve CloudDevOps Jenkins — configured via JCasC"
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_USER}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Administer:${JENKINS_ADMIN_USER}"
+
+# Plugins are no longer installed here — JCasC only configures Jenkins,
+# it doesn't install plugins. Pin the plugin list in a plugins.txt instead

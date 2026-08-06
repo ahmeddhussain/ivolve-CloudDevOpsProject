@@ -60,7 +60,7 @@
     status_code: [200, 204]
   ignore_errors: true
 
-- name: Disable 'Force User Authentication' (Allows seamless pipeline execution)
+- name: Ensure 'Force User Authentication' is enabled (default, secure setting)
   uri:
     url: http://localhost:9000/api/settings/set
     method: POST
@@ -70,7 +70,7 @@
     body_format: form-urlencoded
     body:
       key: "sonar.forceAuthentication"
-      value: "false"
+      value: "true"
     status_code: [200, 204]
 
 - name: Generate SonarQube Token for Jenkins Pipeline

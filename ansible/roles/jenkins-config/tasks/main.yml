@@ -1,91 +1,47 @@
 ---
-- name: Wait for Jenkins initial admin password file
-  wait_for:
-    path: /var/lib/jenkins/secrets/initialAdminPassword
-    state: present
-    timeout: 120
+- name: Install jenkins-plugin-cli pinned plugin set
+  copy:
+    src: plugins.txt
+    dest: /var/lib/jenkins/plugins.txt
+    owner: jenkins
+    group: jenkins
+    mode: '0644'
 
-- name: Ensure init.groovy.d directory exists
+- name: Run jenkins-plugin-cli to install pinned plugins
+  command: >
+    jenkins-plugin-cli
+    --plugin-file /var/lib/jenkins/plugins.txt
+    --plugin-download-directory /var/lib/jenkins/plugins
+  become: true
+  become_user: jenkins
+
+- name: Ensure JCasC config directory exists
   file:
-    path: /var/lib/jenkins/init.groovy.d
+    path: /var/lib/jenkins/casc_configs
     state: directory
     owner: jenkins
     group: jenkins
     mode: '0755'
 
-- name: Create Groovy script to download suggested plugins & create admin user
+- name: Deploy JCasC configuration file
   copy:
-    dest: /var/lib/jenkins/init.groovy.d/setup-jenkins.groovy
+    src: jenkins.yaml
+    dest: /var/lib/jenkins/casc_configs/jenkins.yaml
     owner: jenkins
     group: jenkins
     mode: '0644'
-    content: |
-      import jenkins.model.*
-      import hudson.security.*
-      import jenkins.install.InstallState
 
-      def instance = Jenkins.getInstance()
+- name: Set CASC_JENKINS_CONFIG and admin credentials as Jenkins env vars
+  lineinfile:
+    path: /etc/default/jenkins
+    line: "{{ item }}"
+    create: yes
+  loop:
+    - 'CASC_JENKINS_CONFIG=/var/lib/jenkins/casc_configs/jenkins.yaml'
+    - 'JENKINS_ADMIN_USER={{ vault_jenkins_admin_user }}'
+    - 'JENKINS_ADMIN_PASSWORD={{ vault_jenkins_admin_password }}'
 
-      // 1. Create admin user from Vault variables
-      try {
-          def hudsonRealm = new HudsonPrivateSecurityRealm(false)
-          hudsonRealm.createAccount('{{ vault_jenkins_admin_user }}', '{{ vault_jenkins_admin_password }}')
-          instance.setSecurityRealm(hudsonRealm)
-
-          def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
-          instance.setAuthorizationStrategy(strategy)
-      } catch (Exception e) {
-          println("User creation failed: " + e)
-      }
-
-      // 2. Install required plugins
-      try {
-          def pm = instance.getPluginManager()
-          def uc = instance.getUpdateCenter()
-
-          uc.updateAllSites()
-          def site = uc.getById("default")
-          if (site != null) {
-              site.updateDirectlyNow(false)
-          }
-
-          def plugins = [
-              'cloudbees-folder',
-              'build-timeout',
-              'credentials-binding',
-              'timestamper',
-              'ws-cleanup',
-              'workflow-aggregator',
-              'pipeline-stage-view',
-              'git',
-              'github',
-              'docker-workflow',
-              'sonar'
-          ]
-
-          plugins.each { pluginName ->
-              if (!pm.getPlugin(pluginName)) {
-                  def plugin = site ? site.getPlugin(pluginName) : null
-                  if (plugin) {
-                      def deployment = plugin.deploy(true)
-                      deployment.get()
-                  }
-              }
-          }
-      } catch (Exception e) {
-          println("Plugin installation failed: " + e)
-      }
-
-      // 3. Mark setup wizard as complete
-      try {
-          instance.setInstallState(InstallState.INITIAL_SETUP_COMPLETED)
-      } catch (Exception e) {
-          println("Wizard state update failed: " + e)
-      }
-
-      instance.save()
-
-- name: Restart Jenkins to execute Groovy setup script
+- name: Restart Jenkins to apply plugins + JCasC config
   service:
     name: jenkins
     state: restarted

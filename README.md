@@ -235,46 +235,53 @@ Ansible configures the Jenkins/SonarQube EC2 instance after Terraform provisions
 
 ### What each role does
 
-* **`common`** —> installs OpenJDK 21, AWS CLI, SoanrQube CLI and base packages.
+* **`common`** —> installs OpenJDK 21, AWS CLI, SonarQube CLI, and base packages.
 * **`docker`** —> installs Docker Engine, adds `ubuntu` to the `docker` group.
 * **`trivy`** —> installs the Trivy CLI for image scanning.
-* **`sonarqube`** —> runs SonarQube Community in Docker on port 9000, tunes `vm.max_map_count`/`fs.file-max`, waits for the API to report `UP`, then via REST API: changes the default admin password with vault password, and generates a pipeline token.
+* **`sonarqube`** —> runs SonarQube Community in Docker on port 9000, tunes `vm.max_map_count`/`fs.file-max`, waits for the API to report `UP`, then via REST API: changes the default admin password with the vault password, **keeps forced authentication enabled** , and generates a pipeline token. The pipeline authenticates via that token on every request (`-Dsonar.token`).
 * **`jenkins`** —> installs Jenkins, adds `jenkins` to the `docker` group, starts the service.
-* **`jenkins-config`** —> waits for the initial admin password file, then drops a Groovy script into `init.groovy.d` that creates the admin account from Vault variables, installs the required plugins (Git, GitHub, Docker Pipeline, SonarQube Scanner, Pipeline, etc.), and marks the setup wizard complete — so Jenkins comes up fully configured with no manual wizard steps.
+* **`jenkins-config`** —> configures Jenkins via **JCasC (Configuration as Code)** :
+  - `files/plugins.txt` — a pinned `name:version` list, installed pre-boot via `jenkins-plugin-cli` (Git, GitHub, Docker Pipeline, SonarQube Scanner, Pipeline, `configuration-as-code`, etc.)
+  - `files/jenkins.yaml` — declares the desired end-state (admin user, security realm/authorization).
+  - the task drops both files onto the box, points Jenkins at the YAML via `CASC_JENKINS_CONFIG` in `/etc/default/jenkins` (alongside the admin credentials as env vars, sourced from Vault), and restarts — Jenkins applies the YAML on boot, so it comes up fully configured with no manual wizard steps.
 
 ### Dynamic Inventory & Vault
 
 * **`inventory/aws_ec2.yml`** uses the `amazon.aws.aws_ec2` plugin, filtered to `tag:Role: Jenkins` and `instance-state-name: running`, keyed by tags (so `site.yml` can target `hosts: tag_Role_Jenkins`).
 * **`group_vars/all/vault.yml`** is intentionally **not committed** (see `.gitignore`) — it must be created locally before running the playbook, containing at minimum:
-  ```yaml
+```yaml
   vault_sonarqube_admin_password: "<12+ character password>"
   vault_jenkins_admin_user: "<admin username>"
   vault_jenkins_admin_password: "<admin password>"
-  ```
+```
   Encrypt it with `ansible-vault encrypt group_vars/all/vault.yml` before running the playbook.
+
+### Network access
+
+SonarQube's port 9000 is restricted at the security-group level to `var.my_ip` (Terraform), not open to `0.0.0.0/0` — combined with forced authentication being back on at the application level, that's two layers instead of relying on either alone. Practical tradeoff: if your IP changes, `terraform apply` needs to be re-run with the updated value to regain access to the SonarQube UI.
 
 ### How to run
 
 * Confirm the EC2 instance is discovered:
-  ```bash
+```bash
   ansible-inventory --graph
-  ```
+```
   ![ansible-inventory --graph output showing the discovered Jenkins host](screenshots/image-5.png)
 
 * Run the master playbook:
-  ```bash
+```bash
   ansible-playbook site.yml --ask-vault-pass
-  ```
+```
   ![ansible-playbook site.yml final PLAY RECAP — 0 failed](screenshots/image-7.png)
 
 ### Test Results
 
 * Java 21, Docker, and Trivy installed and verified.
-* SonarQube reachable at `http://<EC2_PUBLIC_IP>:9000` with a pipeline token generated.
+* SonarQube reachable at `http://<EC2_PUBLIC_IP>:9000` (from the whitelisted IP only), with a pipeline token generated and forced authentication enforced for anonymous access.
 
-  ![SonarQube web UI live, no login required](screenshots/image-6.png)
+  ![](screenshots/image-6.png)
 
-* Jenkins reachable at `http://<EC2_PUBLIC_IP>:8080`, already past the setup wizard with the admin account and plugins pre-configured.
+* Jenkins reachable at `http://<EC2_PUBLIC_IP>:8080`, configured via JCasC with the admin account and pinned plugin set applied on boot — no manual wizard steps.
 
   ![Jenkins dashboard live with the setup wizard already completed](screenshots/image-8.png)
 
