@@ -343,7 +343,7 @@ Push Updated Manifests to GitHub (GitOps)
 | File | Purpose |
 |---|---|
 | `buildimage.groovy` | `docker build` with a dynamic context path (e.g. `docker/iVolveFinalProject/frontend`) |
-| `sonarscan.groovy` | Runs `sonarsource/sonar-scanner-cli` in Docker against the EC2's SonarQube, with `node_modules`/binary exclusions and a JS memory cap |
+| `sonarscan.groovy `| Runs sonar-scanner directly on the Jenkins host against localhost:9000, authenticated via the sonarqube-token Jenkins credential, with node_modules/build-artifact/binary exclusions |
 | `scanimage.groovy` | `trivy image --severity HIGH,CRITICAL` (currently `--exit-code 0`, i.e. reports but does not fail the build) |
 | `pushimage.groovy` | Logs into ECR and pushes the tagged image, via Jenkins credentials `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` |
 | `deleteimagelocally.groovy` | Removes the local and ECR-tagged images post-push |
@@ -518,26 +518,25 @@ SELECT id, username, created_at FROM users;
 
 Issues actually hit while building this project, and how they were resolved.
 
-### 1. Infrastructure & Terraform
 
-* **EC2 disk space exhaustion:** the default 8GB root volume filled up under concurrent Docker images, the JDK, and SonarQube. **Fix:** raised the root volume to 20–30GB in the `server` module, and on already-running instances ran `sudo growpart /dev/nvme0n1 1` + `sudo resize2fs` to extend the ext4 filesystem online.
+### 1. Ansible & Server Configuration
 
-### 2. Ansible & Server Configuration
+* **SonarQube admin password policy (HTTP 400):** the REST API password-change call failed because SonarQube enforces a 12-character minimum. 
+**Fix:** set `vault_sonarqube_admin_password` in `vault.yml` to a 12+ character value.
+* **Jenkins startup failure ("Java 17 older than required Java 21"):** recent Jenkins releases require Java 21+. 
+**Fix:** the `common` role installs `openjdk-21-jdk`.
 
-* **SonarQube admin password policy (HTTP 400):** the REST API password-change call failed because SonarQube enforces a 12-character minimum. **Fix:** set `vault_sonarqube_admin_password` in `vault.yml` to a 12+ character value.
-* **Jenkins startup failure ("Java 17 older than required Java 21"):** recent Jenkins releases require Java 21+. **Fix:** the `common` role installs `openjdk-21-jdk`.
+### 2. Jenkins CI & Shared Libraries
 
-### 3. Jenkins CI & Shared Libraries
+* **SonarScanner memory freeze:** the JS sensor froze trying to analyze binary `.png`s and `node_modules`. 
+**Fix:** Added -Dsonar.exclusions="**/node_modules/**,**/target/**,**/*.jar,**/*.war,**/*.png,**/*.jpg,**/*.jpeg,**/*.svg" to the sonar-scanner invocation in sonarscan.groovy. The scanner runs directly on the Jenkins EC2, authenticated against localhost:9000 via the sonarqube-token Jenkins credential — no JS heap cap was needed once the actual offenders were excluded from the scan.
 
-* **Docker build context ("path not found"):** the microservices live in a subdirectory (`docker/iVolveFinalProject/<service>`) cloned from a separate upstream repo. **Fix:** each `Jenkinsfile.*` passes that relative path explicitly to `buildimage(...)`, and the source app was merged into this repo under `docker/iVolveFinalProject/`.
-* **SonarScanner memory freeze:** the JS sensor froze trying to analyze binary `.png`s and `node_modules`. **Fix:** `sonarscan.groovy` runs the scanner in Docker with `-Dsonar.javascript.node.maxspace=512` and excludes `**/node_modules/**,**/*.png,**/*.jpg`.
+### 3. Kubernetes & ArgoCD GitOps
 
-### 4. Kubernetes & ArgoCD GitOps
-
-* **PVC stuck `Pending` (EBS CSI auth failure):** the EBS CSI controller pods were `CrashLoopBackOff` with `no EC2 IMDS role found` — IMDS isn't a reliable credential source for pod-level AWS API access on EKS. **Fix:** a dedicated IRSA role with `AmazonEBSCSIDriverPolicy`, bound via `service_account_role_arn` on the `aws_eks_addon.ebs_csi` resource.
-* **Ingress `ADDRESS` pending:** no AWS Load Balancer Controller was installed, so nothing could provision an ALB for `ingressClassName: alb`. **Fix:** installed the controller via Helm (now done directly by Terraform) with its own IRSA role.
-
-
+* **PVC stuck `Pending` (EBS CSI auth failure):** the EBS CSI controller pods were `CrashLoopBackOff` with `no EC2 IMDS role found` — IMDS isn't a reliable credential source for pod-level AWS API access on EKS. 
+**Fix:** a dedicated IRSA role with `AmazonEBSCSIDriverPolicy`, bound via `service_account_role_arn` on the `aws_eks_addon.ebs_csi` resource.
+* **Ingress `ADDRESS` pending:** no AWS Load Balancer Controller was installed, so nothing could provision an ALB for `ingressClassName: alb`. 
+**Fix:** installed the controller via Helm (now done directly by Terraform) with its own IRSA role.
 
 ---
 
